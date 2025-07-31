@@ -1,22 +1,18 @@
 import pymysql
-import os
-
-# **資料庫的 DB 連線設定** - 使用環境變數
+# **資料庫的 DB 連線設定**
 DB_CONFIG_CHAT = {
-    "host": os.getenv("DB_HOST", "eksdb.cluster-cmaiezmmaayo.ap-northeast-1.rds.amazonaws.com"),
-    "user": os.getenv("DB_USER", "mike"),
-    "password": os.getenv("DB_PASSWORD", "qEsudqgCFgdp"),
-    "database": os.getenv("DB_NAME", "taiwan"),
-    "port": int(os.getenv("DB_PORT", "3306")),
+    "host": "eksdb.cluster-cmaiezmmaayo.ap-northeast-1.rds.amazonaws.com",
+    "user": "mike",
+    "password": "qEsudqgCFgdp",
+    "database": "taiwan",
+    "port": 3306,
     "charset": "utf8mb4",
 }
 
-def fetch_stamp_data(USER_ID: str):
+def fetch_stamp_data(USER_ID:str):
     try:
         connection = pymysql.connect(**DB_CONFIG_CHAT)
         cursor = connection.cursor(pymysql.cursors.DictCursor)
-        
-        # 使用參數化查詢，避免 SQL 注入
         sql_query = """
        SELECT
         sn.code AS code,
@@ -44,13 +40,12 @@ def fetch_stamp_data(USER_ID: str):
             SELECT DISTINCT tb.product_id
             FROM token_basic tb
             WHERE
-            tb.owner = %s
+            tb.owner = '${USER_ID}'
             AND tb.class = 1
         );
         """
 
-        # 使用參數化查詢執行
-        cursor.execute(sql_query, (USER_ID,))
+        cursor.execute(sql_query)
         result = cursor.fetchall()
         cursor.close()
         connection.close()
@@ -58,9 +53,10 @@ def fetch_stamp_data(USER_ID: str):
         return result
 
     except Exception as e:
-        print(f"❌ 錯誤: 無法從資料庫獲取數據 - {e}")
-        return []
+        print(f"❌ 錯誤: 無法從 `` 獲取數據 - {e}")
+        return 
 
 
-if __name__ == '__main__':
+if __name__=='main':
     print(fetch_stamp_data(USER_ID='2'))
+
