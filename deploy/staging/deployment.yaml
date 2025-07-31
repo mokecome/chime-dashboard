@@ -1,0 +1,33 @@
+# 自訂版本號
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-chat-stamp-staging
+  namespace: funtaiwan
+  labels:
+    app: aai-chat-stamp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ai-chat-stamp
+  template:
+    metadata:
+      labels:
+        app: ai-chat-stamp
+    spec:
+      containers:
+        - name: ai-chat-stamp
+          # 自訂義映像檔
+          image: harbor.star-bit.io/funtaiwan/ai-chat-stamp:v0.0.1
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 5000
+              name: http
+          env:
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: funtaiwan
+                  key: OPENAI_API_KEY
+ 

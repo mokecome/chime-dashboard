@@ -1,0 +1,14 @@
+kind: Service
+apiVersion: v1
+metadata:
+  name: ai-chat-stamp
+  namespace: funtaiwan
+  labels:
+    app: ai-chat-stamp
+spec:
+  selector:
+    app: ai-chat-stamp
+  type: NodePort
+  ports:
+    - name: http
+      port: 5000
