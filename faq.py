@@ -19,24 +19,27 @@ import litellm
 
 load_dotenv(override=True)
 
+# 啟用 LiteLLM 調試
 litellm._turn_on_debug()
 
+# 設定日誌
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
 
+
+# 檢查 API 配置
+
 model = LiteLlm(
-    model="gpt-4o",  
-    api_base=OPENAI_BASE_URL,
-    api_key=OPENAI_API_KEY
-)
+        model="gpt-4o",  
+        api_base=OPENAI_BASE_URL,
+        api_key=OPENAI_API_KEY
+    )
 
-# 全域變數存儲當前用戶ID
-current_user_id = None
 
-def get_user_location() -> Dict[str, str]:
+def get_user_location() -> Dict[str,str]:
     """
     獲取使用者當前經緯度
     Returns:
@@ -47,61 +50,23 @@ def get_user_location() -> Dict[str, str]:
     """
     import requests
     try:
-        # 嘗試多個 IP 定位服務，提高成功率
-        services = [
-            "http://ip-api.com/json/",
-            "https://ipapi.co/json/",
-            "https://freegeoip.app/json/"
-        ]
+        url = "http://ip-api.com/json/"
+        response = requests.get(url)
+        data = response.json()
         
-        for url in services:
-            try:
-                response = requests.get(url, timeout=5)
-                response.raise_for_status()
-                data = response.json()
-                
-                # 根據不同服務的響應格式處理
-                if url.startswith("http://ip-api.com"):
-                    if data.get("status") == "success":
-                        return {
-                            "latitude": data.get("lat"),
-                            "longitude": data.get("lon"),
-                            "city": data.get("city")
-                        }
-                elif url.startswith("https://ipapi.co"):
-                    if data.get("latitude") and data.get("longitude"):
-                        return {
-                            "latitude": data.get("latitude"),
-                            "longitude": data.get("longitude"),
-                            "city": data.get("city")
-                        }
-                elif url.startswith("https://freegeoip.app"):
-                    if data.get("latitude") and data.get("longitude"):
-                        return {
-                            "latitude": data.get("latitude"),
-                            "longitude": data.get("longitude"),
-                            "city": data.get("city")
-                        }
-                        
-            except Exception as service_error:
-                logger.warning(f"IP 定位服務 {url} 失敗: {service_error}")
-                continue
-        
-        # 如果所有服務都失敗，返回台北作為默認位置
-        logger.warning("所有 IP 定位服務都失敗，使用台北作為默認位置")
-        return {
-            "latitude": "25.0338",
-            "longitude": "121.5645",
-            "city": "Taipei"
-        }
-        
+        if data["status"] == "success":
+            latitude = data["lat"]  
+            longitude = data["lon"] 
+            print(f"IP定位結果：\n緯度：{latitude}\n經度：{longitude}")
+            print(f"大致位置：{data['city']}")
+            return {"latitude":latitude, "longitude":longitude,'city':data['city']}
+        else:
+            print("定位失敗：", data["message"])
+            return {"latitude":None, "longitude":None,'city':None} 
     except Exception as e:
-        logger.error(f"IP 定位發生錯誤: {str(e)}")
-        return {
-            "latitude": "25.0338",
-            "longitude": "121.5645",
-            "city": "Taipei"
-        }
+        print("請求出錯：", str(e))
+        return {"latitude":None, "longitude":None,'city':None} 
+
 
 def haversine(lat1, lon1, lat2, lon2):
     """
@@ -116,10 +81,12 @@ def haversine(lat1, lon1, lat2, lon2):
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
     return R * c
 
-def GetUserAllStamps() -> Dict[str, Any]:
+def GetUserAllStamps(USER_ID:str) -> Dict[str, Any]:
     """
     獲取用户所有尚未獲得的集章名(stamp_name) 活動名(activity_name)  集章地址(address)
     
+    輸入:
+        USER_ID(必填)
     輸出:
          [
           {'stamp_name': '智慧景區', 'activity_name': '數位觀光體驗集點''address': '804 高雄市鼓山區蓬萊路 99 號'}, 
@@ -127,12 +94,8 @@ def GetUserAllStamps() -> Dict[str, Any]:
                 ...
          ]
     """
-    global current_user_id
-    if not current_user_id:
-        return []
-        
-    stamp_data = fetch_stamp_data(current_user_id)
-    locations = []
+    stamp_data = fetch_stamp_data(USER_ID)
+    locations=[]
     for item in stamp_data:
         s_time = item["s_time"]
         e_time = item["e_time"]
@@ -146,10 +109,13 @@ def GetUserAllStamps() -> Dict[str, Any]:
 
     return locations
 
-def GetUserNearStamps() -> Dict[str, Any]:
+
+def GetUserNearStamps(USER_ID:str) -> Dict[str, Any]:
     """
     獲取使用者 「附近 / 周邊 / 周遭」 尚未獲得的集章名(stamp_name) 活動名(activity_name)  集章地址(address) ,距離由近到遠排序
     
+    輸入:
+        USER_ID(必填)
     輸出:
          [
           {'stamp_name': '智慧景區', 'activity_name': '數位觀光體驗集點''address': '804 高雄市鼓山區蓬萊路 99 號'..}, 
@@ -157,44 +123,35 @@ def GetUserNearStamps() -> Dict[str, Any]:
                 ...
          ]
     """
-    global current_user_id
-    if not current_user_id:
-        return []
-        
     CITY_MAP = {
-        "Taipei": "台北",
-        "New Taipei City": "新北",
-        "Taichung": "台中",
-        "Tainan": "台南",
-        "Kaohsiung": "高雄",
-        "Keelung": "基隆",
-        "Hsinchu": "新竹",
-        "Chiayi": "嘉義",
-        "Taoyuan": "桃園",
-        "Miaoli": "苗栗",
-        "Changhua": "彰化",
-        "Nantou": "南投",
-        "Yunlin": "雲林",
-        "Pingtung": "屏東",
-        "Yilan": "宜蘭",
-        "Hualien": "花蓮",
-        "Taitung": "台東",
-        "Penghu": "澎湖",
-        "Kinmen": "金門",
-        "Lienchiang": "連江",
+    "Taipei": "台北",
+    "New Taipei City": "新北",
+    "Taichung": "台中",
+    "Tainan": "台南",
+    "Kaohsiung": "高雄",
+    "Keelung": "基隆",
+    "Hsinchu": "新竹",
+    "Chiayi": "嘉義",
+    "Taoyuan": "桃園",
+    "Miaoli": "苗栗",
+    "Changhua": "彰化",
+    "Nantou": "南投",
+    "Yunlin": "雲林",
+    "Pingtung": "屏東",
+    "Yilan": "宜蘭",
+    "Hualien": "花蓮",
+    "Taitung": "台東",
+    "Penghu": "澎湖",
+    "Kinmen": "金門",
+    "Lienchiang": "連江",
     }
 
     location = get_user_location()
-    if not location["latitude"] or not location["longitude"]:
-        return []
-        
     user_lat = float(location["latitude"])
     user_lon = float(location["longitude"])
     user_city_zh = CITY_MAP.get(location["city"], "")
-    
-    stamp_data = fetch_stamp_data(current_user_id)
+    stamp_data = fetch_stamp_data(USER_ID)
     near_locations = []
-    
     for item in stamp_data:
         s_time = item["s_time"]
         e_time = item["e_time"]
@@ -202,20 +159,22 @@ def GetUserNearStamps() -> Dict[str, Any]:
         lon = item["longitude"]
         address = item.get("stamp_address") or ""
         
-        if user_city_zh and user_city_zh in address:
-            if lat and lon:
-                distance = haversine(user_lat, user_lon, float(lat), float(lon))
-                near_locations.append({
-                    "stamp_name": item["stamp_name"],
-                    "activity_name": item["activity_name"],
-                    "activity_time": s_time + '~' + e_time,
-                    "address": address,
-                    "store_name": item["store_name"],
-                    "distance": round(distance, 2)
-                })
-    
+        if  user_city_zh and  user_city_zh  in address:
+            distance = haversine(user_lat, user_lon, float(lat), float(lon))
+            near_locations.append({
+                "stamp_name": item["stamp_name"],
+                "activity_name": item["activity_name"],
+                "activity_time": s_time + '~' + e_time,
+                "address": address,
+                "store_name": item["store_name"],
+                "distance": round(distance, 2)
+            })
     top3 = sorted(near_locations, key=lambda x: x["distance"])[:3]
     return top3
+
+
+
+
 
 agent = Agent(
     name="chatbot",
@@ -300,13 +259,18 @@ agent = Agent(
     若這個問題不知道就回答不知道。
     ''',
     description="回答用户的問題。",
-    tools=[GetUserNearStamps, GetUserAllStamps]
+    tools=[GetUserNearStamps,GetUserAllStamps]
 )
 
-# WebSocket 和 FastAPI 部分保持不變，但修正消息處理
+
+
+
+
+
 async def create_or_get_session(runner, user_id, session_id=None):
     """創建新會話或獲取已有會話，返回實際的 session_id"""
     if session_id:
+        # 如果指定了 session_id，先嚐試獲取
         session = await runner.session_service.get_session(
             app_name=runner.app_name,
             user_id=user_id,
@@ -321,14 +285,15 @@ async def create_or_get_session(runner, user_id, session_id=None):
     else:
         print(f"🔧 自動創建新會話...")
     
+    # 創建新會話（如果 session_id 為 None，會自動生成）
     new_session = await runner.session_service.create_session(
         app_name=runner.app_name,
         user_id=user_id,
-        session_id=session_id
+        session_id=session_id  # 可以是 None 或指定值
     )
     
     print(f"✅ 會話創建成功，Session ID: {new_session.id}")
-    return new_session.id
+    return new_session.id  # 返回實際的 session_id
 
 async def call_agent_async_ws(query: str, runner, user_id: str, session_id: str, websocket: WebSocket):
     """通過 WebSocket 發送用戶的問題給 Agent 並實時返回響應"""
@@ -541,5 +506,3 @@ if __name__ == "__main__":
         reload=True,
         log_level="info"
     )
-
-    
